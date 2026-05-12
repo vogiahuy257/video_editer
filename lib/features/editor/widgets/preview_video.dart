@@ -9,6 +9,8 @@ import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_video_editor/pro_video_editor.dart';
 
 import '/features/editor/widgets/pixel_transparent_painter.dart';
+import '../../../core/services/local_video_repository.dart';
+import '../../../core/theme/app_theme.dart';
 
 /// A widget that previews a video from raw bytes.
 ///
@@ -19,13 +21,17 @@ class PreviewVideo extends StatefulWidget {
     super.key,
     required this.filePath,
     required this.generationTime,
+    this.allowSave = true,
   });
 
-  /// The file path of the video to be previewed.
+  /// File path, network URL, data URL hoặc blob URL của video preview.
   final String filePath;
 
   /// The time it took to generate the video preview.
   final Duration generationTime;
+
+  /// Có hiển thị nút lưu video edited hay không.
+  final bool allowSave;
 
   @override
   State<PreviewVideo> createState() => _PreviewVideoState();
@@ -41,12 +47,14 @@ class _PreviewVideoState extends State<PreviewVideo> {
 
   final _numberFormatter = NumberFormat();
 
+  bool _isSavingToCloud = false;
+
   @override
   void initState() {
     super.initState();
 
     _videoMetadata = ProVideoEditor.instance.getMetadata(
-      EditorVideo.file(widget.filePath),
+      _buildEditorVideoForPreview(),
     );
     _initializePlayer();
   }
@@ -58,8 +66,79 @@ class _PreviewVideoState extends State<PreviewVideo> {
   }
 
   void _initializePlayer() async {
-    var media = Media('file://${widget.filePath}');
+    final source = _isRemoteSource(widget.filePath)
+        ? widget.filePath
+        : 'file://${widget.filePath}';
+    final media = Media(source);
     await _player.open(media, play: false);
+  }
+
+  /// Chọn đúng nguồn video cho ProVideoEditor metadata.
+  EditorVideo _buildEditorVideoForPreview() {
+    if (_isHttpSource(widget.filePath)) {
+      return EditorVideo.network(widget.filePath);
+    }
+
+    return EditorVideo.file(widget.filePath);
+  }
+
+  /// Kiểm tra nguồn video có phải URL trình duyệt/network hay không.
+  bool _isRemoteSource(String value) {
+    return _isHttpSource(value) ||
+        value.startsWith('blob:') ||
+        value.startsWith('data:');
+  }
+
+  /// Kiểm tra nguồn video có phải HTTP/HTTPS URL hay không.
+  bool _isHttpSource(String value) {
+    return value.startsWith('http://') || value.startsWith('https://');
+  }
+
+
+  /// Upload video đã chỉnh sửa lên Firebase Storage và ghi metadata lên Firestore.
+  ///
+  /// Windows/Android: video render thường là file path local nên upload trực tiếp.
+  /// Web: nếu plugin trả về blob URL thì app vẫn preview được, nhưng upload edited
+  /// cần pipeline bytes riêng của trình duyệt.
+  Future<void> _saveEditedVideoToCloud() async {
+    try {
+      setState(() => _isSavingToCloud = true);
+
+      if (_isRemoteSource(widget.filePath)) {
+        throw Exception(
+          'Nguồn video hiện tại là URL/blob. Bản Web đã hỗ trợ upload video gốc; '
+          'upload video đã render cần lấy bytes đầu ra từ plugin trước khi lưu Storage.',
+        );
+      }
+
+      final metadata = await _videoMetadata;
+
+      await LocalVideoRepository().saveVideo(
+        sourcePath: widget.filePath,
+        originalFileName: 'edited_video.mp4',
+        type: 'edited',
+        title: 'edited_video',
+        durationMs: metadata.duration.inMilliseconds,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã upload video đã chỉnh sửa lên hệ thống.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi lưu video: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingToCloud = false);
+      }
+    }
   }
 
   String formatBytes(int bytes, [int decimals = 2]) {
@@ -77,11 +156,35 @@ class _PreviewVideoState extends State<PreviewVideo> {
         return Theme(
           data: Theme.of(context),
           child: Scaffold(
-            appBar: AppBar(title: const Text('Result')),
+            appBar: AppBar(
+              title: const Text('Video đã xuất'),
+              backgroundColor: AppTheme.background,
+              actions: widget.allowSave
+                  ? [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: FilledButton.icon(
+                          onPressed:
+                              _isSavingToCloud ? null : _saveEditedVideoToCloud,
+                          icon: _isSavingToCloud
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.cloud_upload_rounded),
+                          label: Text(
+                            _isSavingToCloud ? 'Đang upload' : 'Upload',
+                          ),
+                        ),
+                      ),
+                    ]
+                  : null,
+            ),
             body: CustomPaint(
               painter: const PixelTransparentPainter(
-                primary: Color.fromARGB(255, 17, 17, 17),
-                secondary: Color.fromARGB(255, 36, 36, 37),
+                primary: AppTheme.background,
+                secondary: AppTheme.surfaceSoft,
               ),
               child: Stack(
                 fit: StackFit.expand,
@@ -149,10 +252,11 @@ class _PreviewVideoState extends State<PreviewVideo> {
           filter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(7),
+              color: AppTheme.surface.withOpacity(0.72),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             child: FutureBuilder<VideoMetadata>(
               future: _videoMetadata,
               builder: (context, snapshot) {

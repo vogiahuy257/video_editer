@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' as io;
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
@@ -10,6 +9,9 @@ import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_video_editor/core/platform/io/io_helper.dart';
 import 'package:pro_video_editor/pro_video_editor.dart';
 import 'package:pro_video_editor_example/features/editor/services/audio_helper_service.dart';
+
+import '../../../core/platform/video_controller_factory.dart';
+import '../../../core/services/local_video_repository.dart';
 import 'package:video_player/video_player.dart' hide VideoAudioTrack;
 
 import '/core/constants/example_audio_tracks_constant.dart';
@@ -22,7 +24,30 @@ import '../widgets/video_progress_alert.dart';
 /// A sample page demonstrating how to use the video-editor.
 class VideoEditorBasicExamplePage extends StatefulWidget {
   /// Creates a [VideoEditorBasicExamplePage] widget.
-  const VideoEditorBasicExamplePage({super.key});
+  ///
+  /// [initialVideoPath] là video người dùng đã upload/chọn từ máy.
+  /// Nếu null, editor sẽ dùng video demo cũ để tránh crash khi mở trực tiếp.
+  const VideoEditorBasicExamplePage({
+    super.key,
+    this.initialVideoPath,
+    this.initialVideoBytes,
+    this.initialVideoTitle,
+    this.initialMimeType = 'video/mp4',
+  });
+
+  /// Đường dẫn video local được người dùng chọn.
+  ///
+  /// Trên Windows/Android thường có giá trị. Trên Web thường null.
+  final String? initialVideoPath;
+
+  /// Bytes video được chọn trên Web.
+  final Uint8List? initialVideoBytes;
+
+  /// Tiêu đề video ban đầu.
+  final String? initialVideoTitle;
+
+  /// MIME type dùng khi phát video từ bytes.
+  final String initialMimeType;
 
   @override
   State<VideoEditorBasicExamplePage> createState() =>
@@ -62,7 +87,7 @@ class _VideoEditorBasicExamplePageState
   final int _thumbnailCount = 7;
 
   /// The video currently loaded in the editor.
-  EditorVideo _video = EditorVideo.asset(kVideoEditorExampleH264Path);
+  late EditorVideo _video;
 
   final _proVideoEditor = ProVideoEditor.instance;
 
@@ -130,7 +155,7 @@ class _VideoEditorBasicExamplePageState
       clips: [
         VideoClip(
           id: '001',
-          title: 'My awesome video',
+          title: widget.initialVideoTitle ?? 'Video của tôi',
           // subtitle: 'Optional',
           duration: Duration.zero,
           clip: EditorVideoClip.autoSource(
@@ -157,7 +182,53 @@ class _VideoEditorBasicExamplePageState
   @override
   void initState() {
     super.initState();
+    _video = _resolveInitialVideo();
     _initializePlayer();
+  }
+
+  /// Chọn nguồn video ban đầu cho editor.
+  ///
+  /// Ưu tiên video người dùng đã upload. Nếu không có thì dùng demo asset
+  /// để đảm bảo editor vẫn mở được khi được gọi trực tiếp.
+  EditorVideo _resolveInitialVideo() {
+    final bytes = widget.initialVideoBytes;
+    final path = widget.initialVideoPath;
+
+    if (bytes != null && bytes.isNotEmpty) {
+      return EditorVideo.memory(bytes);
+    }
+
+    if (path != null && path.trim().isNotEmpty) {
+      return EditorVideo.file(path);
+    }
+
+    return EditorVideo.asset(kVideoEditorExampleH264Path);
+  }
+
+  /// Tạo video player controller theo đúng nguồn video hiện tại.
+  ///
+  /// Windows/Android dùng file path; Web dùng bytes hoặc URL/data URI.
+  VideoPlayerController _createVideoPlayerController() {
+    final bytes = widget.initialVideoBytes;
+    final path = widget.initialVideoPath;
+
+    if (bytes != null && bytes.isNotEmpty) {
+      return createVideoControllerFromBytes(
+        bytes,
+        mimeType: widget.initialMimeType,
+      );
+    }
+
+    if (path != null && path.trim().isNotEmpty) {
+      return createVideoControllerFromPath(path);
+    }
+
+    return VideoPlayerController.asset(kVideoEditorExampleH264Path);
+  }
+
+  /// Tạo controller từ video đã render/merge.
+  VideoPlayerController _createVideoPlayerControllerFromPath(String path) {
+    return createVideoControllerFromPath(path);
   }
 
   @override
@@ -231,7 +302,7 @@ class _VideoEditorBasicExamplePageState
       _generateThumbnails();
     });
 
-    _videoController = VideoPlayerController.asset(kVideoEditorExampleH264Path);
+    _videoController = _createVideoPlayerController();
 
     await Future.wait([
       _videoController.initialize(),
@@ -394,33 +465,92 @@ class _VideoEditorBasicExamplePageState
   }
 
   Future<VideoClip?> _addClip() async {
-    // Open video picker
+    // Open video picker.
     final result = await FilePicker.platform.pickFiles(
       type: FileType.video,
       allowMultiple: false,
+      withData: kIsWeb,
     );
 
-    // User cancelled picker
+    // User cancelled picker.
     if (!mounted || result == null || result.files.isEmpty) return null;
 
     final file = result.files.single;
     final path = file.path;
-    if (path == null) return null;
+    final bytes = file.bytes;
 
-    // Extract file name for display
+    if ((path == null || path.isEmpty) && (bytes == null || bytes.isEmpty)) {
+      return null;
+    }
+
     final name = file.name;
-    final title = name.split('.').first;
+    final title = _removeExtension(name);
+    final editorVideo = bytes != null && bytes.isNotEmpty
+        ? EditorVideo.memory(bytes)
+        : EditorVideo.file(path!);
+
     LoadingDialog.instance.show(context, configs: _configs);
-    final meta = await _proVideoEditor.getMetadata(EditorVideo.file(path));
+    final meta = await _proVideoEditor.getMetadata(editorVideo);
     LoadingDialog.instance.hide();
 
-    // Create and return your video clip
+    await _saveOriginalVideoToCloud(
+      file: file,
+      title: title,
+      durationMs: meta.duration.inMilliseconds,
+    );
+
     return VideoClip(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: title,
-      clip: EditorVideoClip.file(path),
+      clip: EditorVideoClip.autoSource(
+        assetPath: editorVideo.assetPath,
+        bytes: editorVideo.byteArray,
+        file: editorVideo.file,
+        networkUrl: editorVideo.networkUrl,
+      ),
       duration: meta.duration,
     );
+  }
+
+  /// Bỏ phần mở rộng file để lấy tiêu đề video.
+  String _removeExtension(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+
+    if (dotIndex <= 0) {
+      return fileName;
+    }
+
+    return fileName.substring(0, dotIndex);
+  }
+
+  /// Lưu video gốc lên Firebase Storage và ghi metadata lên Firestore.
+  Future<void> _saveOriginalVideoToCloud({
+    required PlatformFile file,
+    required String title,
+    required int durationMs,
+  }) async {
+    try {
+      await LocalVideoRepository().savePlatformFileVideo(
+        file: file,
+        type: 'original',
+        title: title,
+        durationMs: durationMs,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã upload video gốc lên hệ thống.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể lưu video gốc: $e'),
+        ),
+      );
+    }
   }
 
   Future<void> _mergeClips(
@@ -480,7 +610,7 @@ class _VideoEditorBasicExamplePageState
         );
 
     /// Load the new video
-    final controller = VideoPlayerController.file(io.File(updatedFile.path));
+    final controller = _createVideoPlayerControllerFromPath(updatedFile.path);
     await controller.initialize();
     LoadingDialog.instance.hide();
 

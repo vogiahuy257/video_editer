@@ -1,149 +1,267 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-/// Màn hình thông tin cá nhân
+import '../../../core/services/auth_service.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/app_glass_card.dart';
+import '../../auth/pages/auth_page.dart';
+
+/// Màn hình thông tin cá nhân.
 class ProfilePage extends StatelessWidget {
-  /// Khởi tạo [ProfilePage]
+  /// Khởi tạo [ProfilePage].
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
+    return StreamBuilder<User?>(
+      stream: AuthService().authStateChanges,
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 920),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 98),
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 18),
+                    _buildUserInfo(user),
+                    const SizedBox(height: 16),
+                    _buildMenuSection(),
+                    const SizedBox(height: 18),
+                    _buildAuthButton(context, user),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Header của trang cá nhân.
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        const Expanded(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Tôi',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.notifications_outlined),
-                          onPressed: () {},
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.settings_outlined),
-                          onPressed: () {},
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+              Text(
+                'Tài khoản',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
               ),
-
-              // Avatar + Tên
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.grey.shade700,
-                      child: const Icon(Icons.person, size: 40),
-                    ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Người dùng',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        GestureDetector(
-                          onTap: () {},
-                          child: const Text(
-                            'Xem hồ sơ >',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(),
-
-              _buildMenuItem(
-                icon: Icons.emoji_events_outlined,
-                label: 'Sự kiện',
-                onTap: () {},
-              ),
-              _buildMenuItem(
-                icon: Icons.bookmark_outline,
-                label: 'Nội dung thích và mục Yêu thích',
-                onTap: () {},
-              ),
-              _buildMenuItem(
-                icon: Icons.history,
-                label: 'Lịch sử xem',
-                onTap: () {},
-              ),
-              _buildMenuItem(
-                icon: Icons.help_outline,
-                label: 'Trung tâm trợ giúp',
-                onTap: () {},
-              ),
-              _buildMenuItem(
-                icon: Icons.qr_code_scanner,
-                label: 'Quét',
-                onTap: () {},
-              ),
-
-              const SizedBox(height: 24),
-
-              // Nút đăng nhập
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Tính năng đăng nhập sắp ra mắt!'),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.login),
-                  label: const Text('Đăng nhập'),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 48),
-                  ),
-                ),
+              SizedBox(height: 4),
+              Text(
+                'Quản lý hồ sơ và cài đặt ứng dụng.',
+                style: TextStyle(color: AppTheme.textSecondary),
               ),
             ],
           ),
         ),
+        IconButton.filledTonal(
+          onPressed: () {},
+          icon: const Icon(Icons.notifications_outlined),
+        ),
+        const SizedBox(width: 8),
+        IconButton.filledTonal(
+          onPressed: () {},
+          icon: const Icon(Icons.settings_outlined),
+        ),
+      ],
+    );
+  }
+
+  /// Hiển thị thông tin user hiện tại.
+  Widget _buildUserInfo(User? user) {
+    final displayName = user?.displayName;
+    final email = user?.email;
+    final name = user == null
+        ? 'Khách'
+        : (displayName?.isNotEmpty == true ? displayName! : 'Người dùng');
+
+    return AppGlassCard(
+      padding: const EdgeInsets.all(24),
+      gradient: LinearGradient(
+        colors: [
+          AppTheme.primaryBlue.withOpacity(0.22),
+          AppTheme.surfaceSoft.withOpacity(0.76),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 82,
+            height: 82,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppTheme.primaryBlue, AppTheme.cyanBlue],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryBlue.withOpacity(0.32),
+                  blurRadius: 24,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Text(
+              _avatarText(name),
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  user == null ? 'Chưa đăng nhập' : (email ?? ''),
+                  style: const TextStyle(color: AppTheme.textSecondary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    user == null ? 'Guest mode' : 'Firebase Auth active',
+                    style: const TextStyle(
+                      color: AppTheme.cyanBlue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  String _avatarText(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return 'U';
+    return trimmed.substring(0, 1).toUpperCase();
+  }
+
+  Widget _buildMenuSection() {
+    return AppGlassCard(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          _buildMenuItem(
+            icon: Icons.movie_creation_outlined,
+            label: 'Video đã lưu',
+            subtitle: 'Xem lại project và metadata',
+            onTap: () {},
+          ),
+          _buildMenuItem(
+            icon: Icons.history_rounded,
+            label: 'Lịch sử chỉnh sửa',
+            subtitle: 'Các thao tác gần đây',
+            onTap: () {},
+          ),
+          _buildMenuItem(
+            icon: Icons.storage_outlined,
+            label: 'Firebase Storage',
+            subtitle: 'users/{uid}/videos',
+            onTap: () {},
+          ),
+          _buildMenuItem(
+            icon: Icons.help_outline_rounded,
+            label: 'Trung tâm trợ giúp',
+            subtitle: 'Hướng dẫn sử dụng demo',
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Nút đăng nhập/đăng ký hoặc đăng xuất.
+  Widget _buildAuthButton(BuildContext context, User? user) {
+    if (user == null) {
+      return FilledButton.icon(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AuthPage()),
+          );
+        },
+        icon: const Icon(Icons.login),
+        label: const Text('Đăng nhập / Đăng ký'),
+      );
+    }
+
+    return OutlinedButton.icon(
+      onPressed: () async {
+        await AuthService().signOut();
+      },
+      icon: const Icon(Icons.logout),
+      label: const Text('Đăng xuất'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppTheme.textPrimary,
+        minimumSize: const Size(double.infinity, 52),
+        side: BorderSide(color: Colors.white.withOpacity(0.16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+    );
+  }
+
+  /// Item chức năng trong trang cá nhân.
   Widget _buildMenuItem({
     required IconData icon,
     required String label,
+    required String subtitle,
     required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(icon),
-      title: Text(label),
-      trailing: const Icon(Icons.chevron_right),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: AppTheme.primaryBlue.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Icon(icon, color: AppTheme.cyanBlue),
+      ),
+      title: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(color: AppTheme.textSecondary),
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded),
       onTap: onTap,
     );
   }

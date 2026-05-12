@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "259944737321",
+    "project_id": "pro-video-editor-5c91d",
+    "storage_bucket": "pro-video-editor-5c91d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:259944737321:android:2a68e1aac5d738864bca38",
+        "android_client_info": {
+          "package_name": "com.example.pro_video_editor_example"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDiOF3lwOd-ZeoRn7LKaIU4BeR5010nSf4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

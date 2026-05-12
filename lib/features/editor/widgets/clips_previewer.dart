@@ -1,10 +1,9 @@
-import 'dart:io' as io;
-
 import 'package:flutter/widgets.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_video_editor/pro_video_editor.dart';
 import 'package:video_player/video_player.dart';
+
+import '../../../core/platform/video_controller_factory.dart';
 
 /// A widget that displays a preview of a specific [VideoClip].
 class ClipsPreviewer extends StatefulWidget {
@@ -74,7 +73,7 @@ class _ClipsPreviewerState extends State<ClipsPreviewer> {
   void _initializePlayer() async {
     final video = widget.videoClip.clip;
     if (video.hasFile) {
-      _controller = VideoPlayerController.file(io.File(video.file!.path));
+      _controller = createVideoControllerFromPath(video.file!.path);
     } else if (video.hasAssetPath) {
       _controller = VideoPlayerController.asset(video.assetPath!);
     } else if (video.hasNetworkUrl) {
@@ -82,11 +81,7 @@ class _ClipsPreviewerState extends State<ClipsPreviewer> {
         Uri.parse(video.networkUrl!),
       );
     } else {
-      final directory = await getApplicationCacheDirectory();
-      final file = io.File('${directory.path}/temp.mp4');
-      await file.writeAsBytes(video.bytes!);
-
-      _controller = VideoPlayerController.file(file);
+      _controller = createVideoControllerFromBytes(video.bytes!);
     }
 
     await Future.wait([
